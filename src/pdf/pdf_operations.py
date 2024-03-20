@@ -3,10 +3,42 @@ from db.db_models import DbArticle
 from s3.s3_client import *
 from typing import Optional
 from model.api_models import DocumentType
+from uuid import uuid4
 import fitz
 
 COLOR_GOLD = (1, 1, 0)
 BASE_DPI = (300, 300)
+
+class PdfDbArticleConverter:
+    """ Utility class for creating a DbArticle from extracted PyMuPDF metadata """
+    data: bytes
+    title: str
+    bucket: str
+    doi: str
+
+    article_id: str
+
+    def __init__(self, data, title, bucket, doi):
+        self.article_id = str(uuid4())
+        self.data = data
+        self.title = title
+        self.doi = doi
+        self.bucket = bucket
+
+    def convert(self):
+        article = DbArticle()
+        article.id = self.article_id
+        article.bucket_name = self.bucket
+        article.doi = self.doi
+        article.title = self.title
+
+        doc = fitz.Document("pdf", self.data)
+        article.page_count = doc.page_count
+        article.page_width = int(doc[0].rect.width)
+        article.page_height = int(doc[0].rect.height)
+
+        return article
+    
 
 
 class PdfOperator:
@@ -50,7 +82,7 @@ class PdfOperator:
         """ Check if a cached version of the output document exists, and generate it if it doesn't.
         Then, return a presigned URL to the cached location of the output document
         """
-        if not object_exists(self.article.bucket_name, self.dest_path):
+        if not self.exists():
             # Get the source document and perform modifications
             source_doc = get_object_body(self.article.bucket_name, self.source_path)
             source_pdf = fitz.Document("pdf", source_doc.read())
@@ -59,9 +91,22 @@ class PdfOperator:
                 # quick sanity check here to prevent overwrites of the source document
                 assert self.source_path != self.dest_path
                 output_bytes = self._get_output_bytes(dest_doc)
-                put_object(self.article.bucket_name, self.dest_path, output_bytes)
+                self.upsert(output_bytes)
 
         return get_presigned_url(self.article.bucket_name, self.dest_path)
+
+    
+    def exists(self):
+        """ Return whether this PDF exists in S3 """
+        return object_exists(self.article.bucket_name, self.dest_path)
+
+    def upsert(self, body: bytes) -> str:
+        """ Add or update this PDF in S3 """
+        put_object(self.article.bucket_name, self.source_path, body)
+
+    def delete(self) -> str:
+        """ Delete the PDF from S3 """
+        delete_object(self.article.bucket_name, self.source_path)
 
 
 class PdfPageOperator(PdfOperator):

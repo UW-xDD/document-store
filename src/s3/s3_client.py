@@ -24,3 +24,6 @@ def put_object(bucket: str, path: str, body):
     """ Put an s3 object in the given bucket at the given path """
     return s3.put_object(Bucket=bucket, Key=path, Body=body)
 
+def delete_object(bucket: str, path: str):
+    """ Delete an object from S3 """
+    s3.delete_object(Bucket=bucket, Key=path)

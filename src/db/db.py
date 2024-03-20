@@ -22,6 +22,21 @@ def _api_key_valid(session: Session, api_key: str):
     """ Check the API key exists and is enabled """
     return session.scalars(select(DbApiKey).filter_by(api_key=api_key, enabled=True)).first() is not None
 
+def _api_key_write_enabled(session: Session, api_key: str):
+    """ Check the API key exists and is enabled """
+    return session.scalars(select(DbApiKey).filter_by(api_key=api_key, enabled=True, write_enabled=True)).first() is not None
+
+
+def add_article(article: DbArticle, api_key: str) -> DbArticle:
+    """ Add an article to the database if given a valid API key """
+    with DbSession() as session:
+        if not _api_key_write_enabled(session, api_key):
+            raise HTTPException(status_code=403, detail="Invalid API key")
+        article.registrant = api_key
+        session.add(article)
+        session.commit()
+        return article
+
 def get_article_list(page_number: int, per_page: int) -> list[Article]:
     """ Retrieve a paginated list of article summaries """
     with DbSession() as session:
@@ -33,6 +48,8 @@ def get_article(article_id: UUID, api_key: str, auth_required: bool = True) -> D
     """ Retrieve an article's metadata, then optionally ensure the requesting user has permissions to access the document """
     with DbSession() as session:
         article = session.get(DbArticle, article_id)
+        if article is None:
+            raise HTTPException(404, "Article matching query criteria not found")
         if auth_required and not article.is_public and not _api_key_valid(session, api_key):
             raise HTTPException(status_code=403, detail="Invalid API key")
         return article
@@ -51,3 +68,15 @@ def query_articles(query: ArticleQuery) -> DbArticle:
             raise HTTPException(404, "Article matching query criteria not found")
         return Article.from_db_article(article)
 
+def delete_article(article_id: UUID, api_key: str) -> DbArticle:
+    """ Delete an article from the database """
+    with DbSession() as session:
+        article = session.get(DbArticle, article_id)
+        if article is None:
+            raise HTTPException(404, "Article matching query criteria not found")
+        if not _api_key_write_enabled(session, api_key) or article.registrant != api_key:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+
+        session.delete(article)
+        session.commit()
+        return article

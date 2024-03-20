@@ -2,6 +2,7 @@ fastapi
 sqlalchemy
 uvicorn
 psycopg2-binary
+python-multipart
 boto3
 pymupdf
 pillow
