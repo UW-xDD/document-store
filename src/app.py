@@ -6,7 +6,7 @@ from sqlalchemy import select
 from db import db
 from uuid import UUID, uuid4
 from typing import Optional, Annotated
-from model.api_models import Article, DocumentType, DatabaseMetrics, ArticleQuery
+from model.api_models import Article, DocumentType, DatabaseMetrics, ArticleQuery, ArticleExtraction
 from pdf.pdf_operations import PdfDbArticleConverter, PdfOperator, PdfPageOperator, PdfPageSnippetOperator
 from util.openapi_reverse_proxy_util import add_openapi_route
 
@@ -19,7 +19,7 @@ prefix_router = APIRouter(prefix=api_prefix)
 
 add_openapi_route(prefix_router)
 
-@prefix_router.post("/documents")
+@prefix_router.post("/documents", tags=["Documents"])
 def add_document(pdf: UploadFile, 
         title: Annotated[str, Form()], bucket: Annotated[str, Form()], doi: Annotated[Optional[str], Form()] = None, 
         x_api_key: Annotated[str, Header()] = None) -> Article:
@@ -38,17 +38,17 @@ def add_document(pdf: UploadFile,
 
 
 
-@prefix_router.get("/documents")
+@prefix_router.get("/documents", tags=["Documents"])
 def get_documents(page: int = 0, per_page: int = 25) -> list[Article]:
     """ Return a paginated list of alphabetically-sorted documents """
     return db.get_article_list(page, per_page)
 
-@prefix_router.get("/documents/{document_id}")
+@prefix_router.get("/documents/{document_id}", tags=["Documents"])
 def get_document(document_id: UUID) -> Article:
     """ Return the metadata for the given document """
     return Article.from_db_article(db.get_article(document_id, None, False))
 
-@prefix_router.delete("/documents/{document_id}")
+@prefix_router.delete("/documents/{document_id}", tags=["Documents"])
 def delete_document(document_id: UUID, x_api_key: Annotated[str, Header()]):
     """ Delete an article. Requires a write-enabled API key """
     to_delete = db.get_article(document_id, x_api_key)
@@ -56,14 +56,14 @@ def delete_document(document_id: UUID, x_api_key: Annotated[str, Header()]):
     PdfOperator(to_delete).delete()
 
 
-@prefix_router.get("/documents/{document_id}/content")
+@prefix_router.get("/documents/{document_id}/content", tags=["Documents"])
 def get_document_contents(document_id: UUID, x_api_key: Annotated[Optional[str], Header()] = None) -> RedirectResponse:
     """ Return a redirect to the full PDF contents of the given document """
     article = db.get_article(document_id, x_api_key)
     operator = PdfOperator(article)
     return RedirectResponse(operator.get_presigned_document())
 
-@prefix_router.get("/documents/{document_id}/page/{page_num}")
+@prefix_router.get("/documents/{document_id}/page/{page_num}", tags=["Documents"])
 def get_document_page(
         document_id: UUID, page_num: int, content_type: DocumentType = 'pdf', 
         x_api_key: Optional[str] = Header()) -> RedirectResponse:
@@ -74,7 +74,7 @@ def get_document_page(
     operator = PdfPageOperator(article, page_num, content_type)
     return RedirectResponse(operator.get_presigned_document())
 
-@prefix_router.get("/documents/{document_id}/page/{page_num}/snippet/{snippet}")
+@prefix_router.get("/documents/{document_id}/page/{page_num}/snippet/{snippet}", tags=["Documents"])
 def get_document_snippet(
         document_id: UUID, page_num: int, snippet: str, x_api_key: Annotated[Optional[str], Header()] = None, 
         content_type: DocumentType = 'pdf') -> RedirectResponse:
@@ -87,13 +87,33 @@ def get_document_snippet(
     operator = PdfPageSnippetOperator(article, page_num, snippet_bb, content_type)
     return RedirectResponse(operator.get_presigned_document())
 
-@prefix_router.get("/metrics")
-def get_metrics() -> DatabaseMetrics:
-    return db.get_db_metrics()
-
-@prefix_router.get("/query")
+@prefix_router.get("/query", tags=["Documents"])
 def query_articles(query: Annotated[ArticleQuery, Depends()]) -> Article:
     """ Query an article based on an external ID (xdd id or doi)"""
     return db.query_articles(query)
+
+@prefix_router.get("/metrics", tags=["Documents"])
+def get_metrics() -> DatabaseMetrics:
+    """ Retrieve collection size metrics """
+    return db.get_db_metrics()
+
+
+@prefix_router.get("/documents/{document_id}/extractions", tags=["Extractions"])
+def get_article_extractions(document_id: UUID, extraction_type: Optional[str] = None, 
+        x_api_key: Annotated[Optional[str], Header()] = None) -> list[ArticleExtraction]:
+    """ Get the stored extractions for a document.  """
+    return db.get_article_extractions(document_id, extraction_type, x_api_key)
+
+@prefix_router.post("/documents/{document_id}/extractions", tags=["Extractions"])
+def add_article_extraction(document_id: UUID, extraction: ArticleExtraction, 
+        x_api_key: Annotated[Optional[str], Header()] = None):
+    """ Add a new the extraction to a document. """
+    db.add_article_extraction(document_id, extraction, x_api_key)
+
+@prefix_router.delete("/documents/{document_id}/extractions/{extraction_id}", tags=["Extractions"])
+def delete_article_extraction(document_id: UUID, extraction_id: UUID, 
+        x_api_key: Annotated[Optional[str], Header()] = None):
+    """ Remove an extraction from a document. """
+    db.delete_article_extraction(document_id, extraction_id, x_api_key)
 
 app.include_router(prefix_router)
