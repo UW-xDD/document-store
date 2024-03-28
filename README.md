@@ -21,6 +21,10 @@ filtering (e.g.,
 [the xDD snippets API](https://xdd.wisc.edu/api/snippets?term=Belle%20Fourche%20Formation&set=dolomites))
 but can be managed independently (e.g., by USGS as part of the CriticalMAAS program). 
 
+Work is ongoing to integrate the system into the CriticalMAAS CDR, beginning by porting the model into the 
+[central CriticalMAAS CDR schemas](https://github.com/DARPA-CRITICALMAAS/cdr_schemas)
+maintained by Jataware.
+
 **xDD will not provide or integrate capabilities for
 accessing full-text documents as part of its core services.**
 
@@ -64,7 +68,8 @@ access to the system.
 - **Document API**: API providing authenticated access to full document
   content and page-level document content
 - **Extractions API**: API providing read and write access to the results of
-  external metadata extraction workflows.
+  external metadata extraction workflows. This API is designed around storing
+  [COSMOS](https://github.com/UW-COSMOS/Cosmos) figure extractions but is extensible for other extraction types.
 
 A stable ID is assigned to each document upon ingest. This is distinct from the
 xDD ID, to allow for the upload of documents not contained in xDD. 
