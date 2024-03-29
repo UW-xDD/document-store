@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:14-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=document_store
+    volumes:
+      - ./local/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+  localstack:
+    image: localstack/localstack:latest
+    environment:
+     - SERVICES=s3
+     - USE_SSL=false
+     - DEFAULT_REGION=us-east-1
+     - DEBUG=1
+    ports:
+     - "4566:4566"
+    volumes:
+      - ./local/aws:/etc/localstack/init/ready.d
+  
+  document-store:
+    image: xdd-documentstore
+    depends_on:
+      - localstack
+      - postgres
+    build: .
+    deploy:
+      restart_policy: # Container dies if it becomes live prior to the postgres container
+        condition: on-failure
+        delay: 3s
+        max_attempts: 5
+        window: 60s
+    environment:
+      - API_PREFIX=/documentstore-api
+
+      - PG_USER=postgres
+      - PG_PASSWORD=postgres
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_DATABASE=document_store
+
+      - S3_ACCESS_KEY=localstack
+      - S3_SECRET_KEY=localstack
+      - S3_HOST=http://localstack:4566
+    ports:
+     - "8089:8089"
+
+  init-data:
+    depends_on:
+      - document-store
+    image: almalinux:9
+    volumes:
+      - ./local/pdf:/tmp/
+    deploy:
+      restart_policy: # Container dies if it becomes live prior to the document-store container
+        condition: on-failure
+        delay: 3s
+        max_attempts: 5
+        window: 60s
+    entrypoint: [
+      'curl', '-X', 'POST',
+      'http://document-store:8089/documentstore-api/documents',
+      '-H', 'accept: application/json',
+      '-H', 'x-api-key: sample-api-key',
+      '-H', 'Content-Type: multipart/form-data',
+      '-F', 'pdf=@/tmp/sample.pdf;type=application/pdf',
+      '-F', 'title=Dummy PDF',
+      '-F', 'bucket=public-pdfs'
+    ]

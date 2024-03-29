@@ -64,7 +64,8 @@ def get_db_metrics() -> DatabaseMetrics:
     """ Retrieve miscellaneous metadata about the state of the database """
     with DbSession() as session:
         document_count = session.query(func.count(DbArticle.id)).scalar()
-        return DatabaseMetrics(document_count=document_count)
+        extraction_count = session.query(func.count(DbArticleExtraction.id)).scalar()
+        return DatabaseMetrics(document_count=document_count, extraction_count=extraction_count)
 
 def query_articles(query: ArticleQuery) -> DbArticle:
     """ Find an article based on its xdd id or doi """
